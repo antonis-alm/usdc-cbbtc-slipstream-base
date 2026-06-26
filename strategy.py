@@ -156,8 +156,15 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
         if self._is_cooldown_active(now):
             return Intent.hold(reason="cooldown after rebalance")
         band_window_scale = Decimal("24") / Decimal(str(max(self.price_band_lookback_hours, 1)))
-        required_band_distance = self.entry_band_pct * band_window_scale
-        if distance_to_low_pct < required_band_distance or distance_to_high_pct < required_band_distance:
+        configured_band_distance = self.entry_band_pct * band_window_scale
+        observed_band_pct = Decimal("0")
+        if mid_price > 0:
+            observed_band_pct = abs(recent_high - recent_low) / mid_price * Decimal("100")
+        max_feasible_band_distance = max((observed_band_pct / Decimal("2")) - Decimal("0.01"), Decimal("0"))
+        required_band_distance = min(configured_band_distance, max_feasible_band_distance)
+        if required_band_distance > 0 and (
+            distance_to_low_pct < required_band_distance or distance_to_high_pct < required_band_distance
+        ):
             return Intent.hold(reason="price too close to recent band edge")
         if vol_1h_pct > self.entry_max_vol_pct:
             return Intent.hold(reason="entry volatility too high")
