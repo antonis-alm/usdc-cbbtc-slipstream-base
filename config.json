@@ -1,0 +1,62 @@
+{
+    "chain": "base",
+    "protocol": "aerodrome_slipstream",
+    "pool_name": "USDC-CBBTC",
+    "pool": "USDC/CBBTC/100",
+    "pool_address": "0x4e962bb3889bf030368f56810a9c96b83cb3e778",
+
+    "force_action": "",
+    "force_position_id": null,
+
+    "max_capital_deploy_pct": "80",
+    "capital_reserve_pct": 20,
+    "initial_tranche_pct": 50,
+    "followup_tranche_pct": 30,
+
+    "entry_require_price_within_recent_band_pct": 1.2,
+    "entry_max_volatility_1h_pct": 2,
+    "cooldown_after_rebalance_minutes": 90,
+
+    "max_slippage_bps": "30",
+    "max_1d_il_estimate_pct": 2.5,
+    "apy_floor_exit_pct": "35",
+    "hard_stop_drawdown_pct": "8",
+    "safety_score_floor": 40,
+    "current_safety_score": 45,
+
+    "rebalance_trigger_price_move_pct": "1.8",
+    "rebalance_trigger_token_drift_pct": 12,
+    "max_rebalances_per_day": 4,
+
+    "compound_rewards": true,
+    "compound_min_reward_usd": 0.01,
+
+    "exit_teardown_policy": "ON_RISK_OR_YIELD_DETERIORATION",
+    "exit_if_apy_below_floor_hours": 8,
+    "exit_if_safety_below_floor": true,
+    "exit_on_extreme_volatility_1h_pct": 5,
+
+    "atr_period": 14,
+    "price_band_lookback_hours": 24,
+
+    "token_funding": [
+        {
+            "symbol": "USDC",
+            "address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "amount": "10",
+            "amount_type": "usd"
+        },
+        {
+            "symbol": "CBBTC",
+            "address": "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf",
+            "amount": "10",
+            "amount_type": "usd"
+        }
+    ],
+
+    "anvil_funding": {
+        "ETH": 10,
+        "USDC": 50000,
+        "CBBTC": 1
+    }
+}
