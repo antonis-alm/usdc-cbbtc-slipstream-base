@@ -88,6 +88,7 @@ def base_config() -> dict:
         "capital_reserve_pct": 20,
         "initial_tranche_pct": 50,
         "followup_tranche_pct": 30,
+        "min_deploy_tranche_usd": 25,
         "entry_require_price_within_recent_band_pct": 1.2,
         "entry_max_volatility_1h_pct": 2,
         "cooldown_after_rebalance_minutes": 90,
@@ -195,6 +196,33 @@ def test_post_close_rebalance_swap_path(strategy: UsdcCbbtcSlipstreamBaseStrateg
     assert _intent_type(intent) == "SWAP"
     assert intent.from_token == "USDC"
     assert intent.to_token == "CBBTC"
+
+
+def test_entry_swap_path_when_inventory_unbalanced(strategy: UsdcCbbtcSlipstreamBaseStrategy) -> None:
+    market = FakeMarket(
+        usdc_balance_usd=Decimal("30000"),
+        cbbtc_balance_usd=Decimal("1000"),
+        usdc_balance=Decimal("30000"),
+        cbbtc_balance=Decimal("0.016"),
+    )
+    intent = strategy.decide(market)
+    assert _intent_type(intent) == "SWAP"
+    assert intent.from_token == "USDC"
+    assert intent.to_token == "CBBTC"
+
+
+def test_min_deploy_tranche_blocks_dust_open(base_config: dict) -> None:
+    cfg = dict(base_config)
+    cfg["min_deploy_tranche_usd"] = 100
+    strat = UsdcCbbtcSlipstreamBaseStrategy(config=cfg, chain="base", wallet_address="0x" + "1" * 40)
+    market = FakeMarket(
+        usdc_balance_usd=Decimal("50"),
+        cbbtc_balance_usd=Decimal("50"),
+        usdc_balance=Decimal("50"),
+        cbbtc_balance=Decimal("0.00083"),
+    )
+    intent = strat.decide(market)
+    assert _intent_type(intent) == "HOLD"
 
 
 @pytest.mark.parametrize("force_action,expected", [("open", "LP_OPEN"), ("rebalance_swap", "SWAP"), ("close", "LP_CLOSE")])

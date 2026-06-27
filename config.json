@@ -8,10 +8,11 @@
     "force_action": "",
     "force_position_id": null,
 
-    "max_capital_deploy_pct": "80",
-    "capital_reserve_pct": 20,
-    "initial_tranche_pct": 50,
-    "followup_tranche_pct": 30,
+    "max_capital_deploy_pct": "98",
+    "capital_reserve_pct": 2,
+    "initial_tranche_pct": 95,
+    "followup_tranche_pct": 90,
+    "min_deploy_tranche_usd": 10,
 
     "entry_require_price_within_recent_band_pct": 1.2,
     "entry_max_volatility_1h_pct": 2,

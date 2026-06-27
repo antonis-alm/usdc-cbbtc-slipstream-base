@@ -53,6 +53,7 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
         self.capital_reserve_pct = Decimal(str(cfg("capital_reserve_pct", "20")))
         self.initial_tranche_pct = Decimal(str(cfg("initial_tranche_pct", "50")))
         self.followup_tranche_pct = Decimal(str(cfg("followup_tranche_pct", "30")))
+        self.min_deploy_tranche_usd = Decimal(str(cfg("min_deploy_tranche_usd", "25")))
 
         self.entry_band_pct = Decimal(str(cfg("entry_require_price_within_recent_band_pct", "1.2")))
         self.entry_max_vol_pct = Decimal(str(cfg("entry_max_volatility_1h_pct", "2")))
@@ -181,15 +182,20 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
         except (MarketSnapshotError, ValueError, KeyError) as exc:
             return Intent.hold(reason=f"balance unavailable: {exc}")
 
+        usdc_balance_usd = Decimal(str(usdc_balance.balance_usd))
+        cbbtc_balance_usd = Decimal(str(cbbtc_balance.balance_usd))
         sizes = self._calculate_open_sizes(
-            usdc_balance_usd=Decimal(str(usdc_balance.balance_usd)),
-            cbbtc_balance_usd=Decimal(str(cbbtc_balance.balance_usd)),
+            usdc_balance_usd=usdc_balance_usd,
+            cbbtc_balance_usd=cbbtc_balance_usd,
             usdc_price=usdc_price,
             cbbtc_price=cbbtc_price,
             usdc_balance=Decimal(str(usdc_balance.balance)),
             cbbtc_balance=Decimal(str(cbbtc_balance.balance)),
         )
         if sizes is None:
+            entry_swap = self._entry_inventory_swap(usdc_balance_usd=usdc_balance_usd, cbbtc_balance_usd=cbbtc_balance_usd)
+            if entry_swap is not None:
+                return entry_swap
             return Intent.hold(reason="insufficient balanced capital for open")
 
         range_lower_tick, range_upper_tick = self._compute_range(mid_price)
@@ -366,6 +372,8 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
         tranche_usd = deployable_usd * tranche_pct / Decimal("100")
         side_usd = tranche_usd / Decimal("2")
 
+        if tranche_usd < self.min_deploy_tranche_usd:
+            return None
         if side_usd <= 0 or usdc_price <= 0 or cbbtc_price <= 0:
             return None
         if usdc_balance_usd < side_usd or cbbtc_balance_usd < side_usd:
@@ -380,6 +388,48 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
             "usdc_amount": usdc_amount,
             "cbbtc_amount": cbbtc_amount,
         }
+
+    def _entry_inventory_swap(self, *, usdc_balance_usd: Decimal, cbbtc_balance_usd: Decimal) -> Intent | None:
+        total_usd = usdc_balance_usd + cbbtc_balance_usd
+        if total_usd <= 0:
+            return None
+
+        reserve_usd = total_usd * self.capital_reserve_pct / Decimal("100")
+        deploy_cap_usd = total_usd * self.max_capital_deploy_pct / Decimal("100")
+        deployable_usd = min(total_usd - reserve_usd, deploy_cap_usd)
+        tranche_usd = deployable_usd * self.initial_tranche_pct / Decimal("100")
+        if tranche_usd < self.min_deploy_tranche_usd:
+            return None
+
+        side_usd = tranche_usd / Decimal("2")
+        max_swap_usd = total_usd * Decimal("0.45")
+        swap_tolerance_usd = Decimal("1")
+
+        if usdc_balance_usd + swap_tolerance_usd < side_usd and cbbtc_balance_usd > side_usd:
+            amount_usd = min(side_usd - usdc_balance_usd, max_swap_usd)
+            if amount_usd > swap_tolerance_usd:
+                return Intent.swap(
+                    from_token="CBBTC",
+                    to_token="USDC",
+                    amount_usd=amount_usd,
+                    max_slippage=self.max_slippage_bps / Decimal("10000"),
+                    protocol=self.protocol,
+                    chain=self.chain,
+                )
+
+        if cbbtc_balance_usd + swap_tolerance_usd < side_usd and usdc_balance_usd > side_usd:
+            amount_usd = min(side_usd - cbbtc_balance_usd, max_swap_usd)
+            if amount_usd > swap_tolerance_usd:
+                return Intent.swap(
+                    from_token="USDC",
+                    to_token="CBBTC",
+                    amount_usd=amount_usd,
+                    max_slippage=self.max_slippage_bps / Decimal("10000"),
+                    protocol=self.protocol,
+                    chain=self.chain,
+                )
+
+        return None
 
     def _rebalance_inventory_swap(
         self,
