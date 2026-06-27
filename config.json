@@ -16,7 +16,8 @@
 
     "entry_require_price_within_recent_band_pct": 1.2,
     "entry_max_volatility_1h_pct": 2,
-    "cooldown_after_rebalance_minutes": 90,
+    "cooldown_after_position_change_minutes": 10,
+    "cooldown_after_rebalance_minutes": 10,
 
     "max_slippage_bps": "30",
     "max_1d_il_estimate_pct": 2.5,

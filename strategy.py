@@ -59,7 +59,9 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
 
         self.entry_band_pct = Decimal(str(cfg("entry_require_price_within_recent_band_pct", "1.2")))
         self.entry_max_vol_pct = Decimal(str(cfg("entry_max_volatility_1h_pct", "2")))
-        self.cooldown_after_rebalance_minutes = int(cfg("cooldown_after_rebalance_minutes", 90))
+        self.cooldown_after_position_change_minutes = int(
+            cfg("cooldown_after_position_change_minutes", cfg("cooldown_after_rebalance_minutes", 90))
+        )
 
         self.max_slippage_bps = Decimal(str(cfg("max_slippage_bps", "30")))
         self.max_1d_il_estimate_pct = Decimal(str(cfg("max_1d_il_estimate_pct", "2.5")))
@@ -88,6 +90,7 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
         self._range_upper: int | None = None
         self._range_center: Decimal | None = None
         self._last_rebalance_at: datetime | None = None
+        self._last_position_change_at: datetime | None = None
         self._rebalances_today = 0
         self._rebalances_day_key = date.today().isoformat()
         self._apy_below_since: datetime | None = None
@@ -158,7 +161,7 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
                 return swap
 
         if self._is_cooldown_active(now):
-            return Intent.hold(reason="cooldown after rebalance")
+            return Intent.hold(reason="cooldown after position change")
         band_window_scale = Decimal("24") / Decimal(str(max(self.price_band_lookback_hours, 1)))
         configured_band_distance = self.entry_band_pct * band_window_scale
         observed_band_pct = Decimal("0")
@@ -517,9 +520,9 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
         return self._safe_ratio(token0_price, token1_price)
 
     def _is_cooldown_active(self, now: datetime) -> bool:
-        if self._last_rebalance_at is None:
+        if self._last_position_change_at is None:
             return False
-        return now - self._last_rebalance_at < timedelta(minutes=self.cooldown_after_rebalance_minutes)
+        return now - self._last_position_change_at < timedelta(minutes=self.cooldown_after_position_change_minutes)
 
     def _can_rebalance_today(self, now: datetime) -> bool:
         day_key = now.date().isoformat()
@@ -546,6 +549,7 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
             center_tick = (self._range_lower + self._range_upper) // 2
             self._range_center = self._tick_to_price(center_tick)
             self._last_open_at = datetime.now(UTC)
+            self._last_position_change_at = self._last_open_at
             self._peak_reference_price = self._range_center
             self._apy_below_since = None
             self._pending_rebalance_swap = False
@@ -558,6 +562,7 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
             self._range_upper = None
             self._range_center = None
             self._peak_reference_price = None
+            self._last_position_change_at = datetime.now(UTC)
 
     def get_persistent_state(self) -> dict[str, Any]:
         return {
@@ -566,6 +571,9 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
             "range_upper": str(self._range_upper) if self._range_upper is not None else None,
             "range_center": str(self._range_center) if self._range_center is not None else None,
             "last_rebalance_at": self._last_rebalance_at.isoformat() if self._last_rebalance_at else None,
+            "last_position_change_at": self._last_position_change_at.isoformat()
+            if self._last_position_change_at
+            else None,
             "rebalances_today": self._rebalances_today,
             "rebalances_day_key": self._rebalances_day_key,
             "apy_below_since": self._apy_below_since.isoformat() if self._apy_below_since else None,
@@ -583,6 +591,11 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
         self._range_upper = int(state["range_upper"]) if state.get("range_upper") else None
         self._range_center = Decimal(state["range_center"]) if state.get("range_center") else None
         self._last_rebalance_at = datetime.fromisoformat(state["last_rebalance_at"]) if state.get("last_rebalance_at") else None
+        self._last_position_change_at = (
+            datetime.fromisoformat(state["last_position_change_at"])
+            if state.get("last_position_change_at")
+            else self._last_rebalance_at
+        )
         self._rebalances_today = int(state.get("rebalances_today", 0))
         self._rebalances_day_key = state.get("rebalances_day_key", date.today().isoformat())
         self._apy_below_since = datetime.fromisoformat(state["apy_below_since"]) if state.get("apy_below_since") else None

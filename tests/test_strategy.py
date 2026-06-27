@@ -177,7 +177,7 @@ def test_close_on_rebalance_token_drift_trigger(strategy: UsdcCbbtcSlipstreamBas
 def test_hold_when_rebalance_cooldown_active(strategy: UsdcCbbtcSlipstreamBaseStrategy) -> None:
     strategy._position_id = "123"
     strategy._range_center = Decimal("60000")
-    strategy._last_rebalance_at = datetime.now(UTC)
+    strategy._last_position_change_at = datetime.now(UTC)
     market = FakeMarket(token0_weight=Decimal("0.7"))
     intent = strategy.decide(market)
     assert _intent_type(intent) == "HOLD"
