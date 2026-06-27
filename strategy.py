@@ -44,6 +44,8 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
         self.pool = cfg("pool", "USDC/CBBTC/100")
         self.pool_address = cfg("pool_address", "")
         pool_parts = [part.strip() for part in str(self.pool).split("/") if part.strip()]
+        self.pool_token0 = pool_parts[0].upper() if len(pool_parts) >= 1 else "USDC"
+        self.pool_token1 = pool_parts[1].upper() if len(pool_parts) >= 2 else "CBBTC"
         self.tick_spacing = int(pool_parts[2]) if len(pool_parts) >= 3 else 100
 
         self.force_action = str(cfg("force_action", "") or "").strip().lower()
@@ -130,9 +132,9 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
         vol_1h_pct = Decimal(str(getattr(atr_1h, "value_percent", "0")))
         il_pct = Decimal(str(getattr(projected_il, "il_percent", "0")))
 
-        mid_price = self._safe_ratio(cbbtc_price, usdc_price)
-        if mid_price is None:
-            return Intent.hold(reason="invalid mid price")
+        pool_price = self._pool_price(usdc_price=usdc_price, cbbtc_price=cbbtc_price)
+        if pool_price is None:
+            return Intent.hold(reason="invalid pool price")
 
         recent_low = Decimal(str(getattr(price_data, "low_24h", cbbtc_price)))
         recent_high = Decimal(str(getattr(price_data, "high_24h", cbbtc_price)))
@@ -143,6 +145,7 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
             return self._manage_open_position(
                 now=now,
                 cbbtc_price=cbbtc_price,
+                pool_price=pool_price,
                 fee_apy=fee_apy,
                 vol_1h_pct=vol_1h_pct,
                 il_pct=il_pct,
@@ -159,8 +162,8 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
         band_window_scale = Decimal("24") / Decimal(str(max(self.price_band_lookback_hours, 1)))
         configured_band_distance = self.entry_band_pct * band_window_scale
         observed_band_pct = Decimal("0")
-        if mid_price > 0:
-            observed_band_pct = abs(recent_high - recent_low) / mid_price * Decimal("100")
+        if cbbtc_price > 0:
+            observed_band_pct = abs(recent_high - recent_low) / cbbtc_price * Decimal("100")
         max_feasible_band_distance = max((observed_band_pct / Decimal("2")) - Decimal("0.01"), Decimal("0"))
         required_band_distance = min(configured_band_distance, max_feasible_band_distance)
         if required_band_distance > 0 and (
@@ -198,10 +201,10 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
                 return entry_swap
             return Intent.hold(reason="insufficient balanced capital for open")
 
-        range_lower_tick, range_upper_tick = self._compute_range(mid_price)
+        range_lower_tick, range_upper_tick = self._compute_range(pool_price)
         self._range_lower = range_lower_tick
         self._range_upper = range_upper_tick
-        self._range_center = mid_price
+        self._range_center = pool_price
 
         return Intent.lp_open(
             pool=self.pool,
@@ -218,6 +221,7 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
         *,
         now: datetime,
         cbbtc_price: Decimal,
+        pool_price: Decimal,
         fee_apy: Decimal,
         vol_1h_pct: Decimal,
         il_pct: Decimal,
@@ -253,7 +257,7 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
 
         price_move_from_center_pct = Decimal("0")
         if self._range_center and self._range_center > 0:
-            price_move_from_center_pct = abs(cbbtc_price - self._range_center) / self._range_center * Decimal("100")
+            price_move_from_center_pct = abs(pool_price - self._range_center) / self._range_center * Decimal("100")
 
         if (
             price_move_from_center_pct >= self.rebalance_trigger_price_move_pct
@@ -284,10 +288,10 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
             )
             if sizes is None:
                 raise ValueError("force_action=open requires sufficient balances")
-            mid = self._safe_ratio(cbbtc_price, usdc_price)
-            if mid is None:
-                raise ValueError("force_action=open could not derive mid price")
-            lower_tick, upper_tick = self._compute_range(mid)
+            pool_price = self._pool_price(usdc_price=usdc_price, cbbtc_price=cbbtc_price)
+            if pool_price is None:
+                raise ValueError("force_action=open could not derive pool price")
+            lower_tick, upper_tick = self._compute_range(pool_price)
             return Intent.lp_open(
                 pool=self.pool,
                 amount0=sizes["usdc_amount"],
@@ -500,6 +504,17 @@ class UsdcCbbtcSlipstreamBaseStrategy(IntentStrategy):
         if denominator <= 0:
             return None
         return numerator / denominator
+
+    def _pool_price(self, *, usdc_price: Decimal, cbbtc_price: Decimal) -> Decimal | None:
+        prices = {
+            "USDC": usdc_price,
+            "CBBTC": cbbtc_price,
+        }
+        token0_price = prices.get(self.pool_token0)
+        token1_price = prices.get(self.pool_token1)
+        if token0_price is None or token1_price is None:
+            return None
+        return self._safe_ratio(token0_price, token1_price)
 
     def _is_cooldown_active(self, now: datetime) -> bool:
         if self._last_rebalance_at is None:

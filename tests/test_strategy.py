@@ -268,6 +268,11 @@ def test_force_open_uses_quantized_tick_bounds(base_config: dict) -> None:
     assert int(Decimal(str(intent.range_upper))) % strat.tick_spacing == 0
 
 
+def test_pool_price_uses_pool_token_order(strategy: UsdcCbbtcSlipstreamBaseStrategy) -> None:
+    pool_price = strategy._pool_price(usdc_price=Decimal("1"), cbbtc_price=Decimal("60000"))
+    assert pool_price == Decimal("1") / Decimal("60000")
+
+
 def test_data_unavailable_returns_hold(strategy: UsdcCbbtcSlipstreamBaseStrategy) -> None:
     market = FakeMarket()
 
